@@ -41,7 +41,7 @@ int main () {
 
     FILE *encrypted_file;
     int file_index = 1;
-    char* filename = malloc(36 * sizeof(char)); // "doc_0000.enc" + null terminator
+    char* filename = malloc(36 * sizeof(char)); // path + "doc_0000.enc" + null terminator
     unsigned char* encrypted_block_buffer = malloc(16 * sizeof(unsigned char)); // AES block size is 16 bytes
     unsigned char* decrypted_block_buffer = malloc(32 * sizeof(unsigned char)); // slightly larger buffer to safely accommodate block size + padding
     snprintf(filename, 36, "./PIRAS/PIRAS_unsalted/doc_%04d.enc", file_index);
@@ -86,6 +86,7 @@ int main () {
                 fwrite(decrypted_block_buffer, 1, final_bytes, output_file); // Scrive eventuali byte finali decifrati su output_file
                 fclose(encrypted_file);
                 fclose(output_file);
+                EVP_CIPHER_CTX_reset(ctx);
                 //EVP_CIPHER_CTX_free(ctx);
                 printf("File %s decrypted successfully with key %d\n", filename, i + 1);
                 break; // Esce dal ciclo delle chiavi, il file è stato decifrato con successo
