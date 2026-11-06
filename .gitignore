@@ -7,3 +7,5 @@ test.enc
 test.txt
 unsalted_decryptor
 salted_decryptor
+PIRAS/PIRAS_salted_decrypted/*
+PIRAS/PIRAS_unsalted_decrypted/*

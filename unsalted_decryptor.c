@@ -19,7 +19,7 @@
 #define DECRYPT_FINAL_ERROR 4
 
 #define DEBUG
-//#define LOG_MATCH_FOUND
+#define LOG_MATCH_FOUND
 //#define LOG_DECRYPTION_ERROR
 
 void keyDerivation(FILE* dictionary, unsigned char** keys, unsigned char** iv);

@@ -24,11 +24,15 @@
 #define DECRYPT_FINAL_ERROR 4
 
 #define DEBUG
-//#define LOG_MATCH_FOUND
+#define LOG_MATCH_FOUND
 //#define LOG_DECRYPTION_ERROR
 
-void keyDerivation(FILE* dictionary, unsigned char salt[SIZE_OF_SALT], unsigned char key[SIZE_OF_KEY], unsigned char iv[SIZE_OF_IV]) {
+void keyDerivation(unsigned char* password, int password_length, unsigned char salt[SIZE_OF_SALT], unsigned char key[SIZE_OF_KEY], unsigned char iv[SIZE_OF_IV]);
 int decryptFile(EVP_CIPHER_CTX* ctx, FILE* encrypted_file, FILE* output_file, unsigned char* key, unsigned char* iv);
+void getPasswords(FILE* dictionary, unsigned char* passwords[DICTIONARY_SIZE], int passwords_length[DICTIONARY_SIZE]);
+void dumpPasswords(unsigned char *passwords[DICTIONARY_SIZE], int passwords_length[DICTIONARY_SIZE]);
+void getSalt(FILE* encrypted_file, unsigned char salt[SIZE_OF_SALT]);
+
 
 int main () {
 
@@ -39,23 +43,22 @@ int main () {
         return 1;
     }
 
-    unsig
-
     //derivazione delle chiavi e degli IV dal dizionario
+    unsigned char* passwords[DICTIONARY_SIZE];
+    int passwords_length[DICTIONARY_SIZE];
     unsigned char key[SIZE_OF_KEY];
     unsigned char iv[SIZE_OF_IV];
     unsigned char salt[SIZE_OF_SALT];
-    unsigned char salt_and_first_block[SIZE_OF_SALT_PREFIX + SIZE_OF_SALT + SIZE_OF_BLOCK];
-
-    //debug: stampa delle chiavi generate
+    //unsigned char salt_and_first_block[SIZE_OF_SALT_PREFIX + SIZE_OF_SALT + SIZE_OF_BLOCK];
+    
+    getPasswords(dictionary, passwords, passwords_length);
+    fclose(dictionary);
+    
     /*
-    for(int i = 0; i < DICTIONARY_SIZE; i++) {
-            printf("Key %d: ", i);
-            for (int j = 0; j < 32; j++) {
-                printf("%02x", (unsigned char)keys[i][j]);
-            }
-            printf("\n");
-    }*/
+    dumpPasswords(passwords, passwords_length);
+    return 0; // Exit after dumping passwords for debugging
+    */
+    
     
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 
@@ -68,7 +71,7 @@ int main () {
     //debug
     printf("About to process files...\n");
 
-    for (int file_index = 1; file_index <= DOCUMENTS_NUMBER, file_index++) {
+    for (int file_index = 1; file_index <= NUMBER_OF_DOCUMENTS; file_index++) {
 
         snprintf(encrypted_filename, ENCRYPTED_DOCUMENT_PATH_LENGTH, "%s/doc_%04d.enc", ENCRYPTED_DOCUMENTS_FOLDER, file_index);
         snprintf(decrypted_filename, DECRYPTED_DOCUMENT_PATH_LENGTH, "%s/doc_%04d.pdf", DECRYPTED_DOCUMENTS_FOLDER, file_index);
@@ -79,97 +82,95 @@ int main () {
             continue;
         }
 
-        //estrazione del sale
-        
-
-    }
-
-    while ((encrypted_file = fopen(encrypted_filename, "rb"))) {
-        if (!(decrypted_file = fopen(decrypted_filename, "wb"))) {
-            printf("Error opening decrypted file %s\n", decrypted_filename);
+        if ((decrypted_file = fopen(decrypted_filename, "wb")) == NULL) {
+            printf("Skipping file number %d because I couldn't open the decrypted file", file_index);
             fclose(encrypted_file);
-            break;
+            continue;
         }
+
+        getSalt(encrypted_file, salt);
 
         for (int password_index = 0; password_index < DICTIONARY_SIZE; password_index++) {
             
-            if (decryptFile(ctx, encrypted_file, decrypted_file, keys[password_index], iv[password_index]) != 0) { // Placeholder call to decryptFile; actual decryption logic will be handled in the loop below
+            //derivazione della chiave e dell'IV
+            keyDerivation(passwords[password_index], passwords_length[password_index], salt, key, iv); // Use a password based on the file index for demonstration
+             
+            //debug
+            /*
+            printf("salt: ");
+            for (int i = 0; i < SIZE_OF_SALT; i++) {
+                printf("%02x", salt[i]);
+            }
+            printf("\n");
+
+            printf("key: ");
+            for (int i = 0; i < SIZE_OF_KEY; i++) {
+                printf("%02x", key[i]);
+            }
+            printf("\n");
+
+            printf("iv: ");
+            for (int i = 0; i < SIZE_OF_IV; i++) {
+                printf("%02x", iv[i]);
+            }
+            printf("\n");
+            exit(0);
+            */
+
+            if (decryptFile(ctx, encrypted_file, decrypted_file, key, iv) != 0) {
                 #ifdef LOG_DECRYPTION_ERROR
                 printf("Error occurred while decrypting file: %s\n", encrypted_filename);
                 printf("Ignoring password number %d\n", password_index + 1);
                 printf("Skipping to next password...\n");
                 #endif
-                rewind(encrypted_file);
-                rewind(decrypted_file);
+                fseek(encrypted_file, SIZE_OF_SALT_PREFIX + SIZE_OF_SALT, SEEK_SET); // Reset file pointer to the start of the encrypted data
+                fseek(decrypted_file, 0, SEEK_SET); // Reset file pointer to the start of the decrypted file
                 continue;
             }
 
             #ifdef LOG_MATCH_FOUND
-            printf("File %s decrypted successfully with password number %d\n", encrypted_filename, password_index + 1);
+            printf("Decryption successful for file: %s with password number %d\n", encrypted_filename, password_index + 1);
             #endif
+            break; // Exit the password loop if decryption is successful
 
-            fclose(encrypted_file);
-            fclose(decrypted_file);
-            break; // Exit the password loop if decryption was successful
         }
 
-        file_index++;
-        snprintf(encrypted_filename, ENCYPTED_DOCUMENT_PATH_LENGTH, "%s/doc_%04d.enc", ENCRYPTED_DOCUMENTS_FOLDER, file_index);
-        snprintf(decrypted_filename, DECRYPTED_DOCUMENT_PATH_LENGTH, "%s/doc_%04d.pdf", DECRYPTED_DOCUMENTS_FOLDER, file_index);
+        fclose(encrypted_file);
+        fclose(decrypted_file);
     }
 
+        
     EVP_CIPHER_CTX_free(ctx);
     fclose(dictionary);
-    /*
-    free(encrypted_filename);
-    free(decrypted_filename);
-    */
-    
-    free(key);
-    free(iv);
+    for (int i = 0; i < DICTIONARY_SIZE; i++) {
+        free(passwords[i]);
+    }
 
     printf("All files processed or error opening files\n");
     return 0;
     
 }
 
-void keyDerivation(FILE* dictionary, unsigned char salt[SIZE_OF_SALT], unsigned char key[SIZE_OF_KEY], unsigned char iv[SIZE_OF_IV]) {
+void keyDerivation(unsigned char* password, int password_length, unsigned char salt[SIZE_OF_SALT], unsigned char key[SIZE_OF_KEY], unsigned char iv[SIZE_OF_IV]) {
     unsigned char derived_key_buffer[48];
     char* line_buffer = NULL;
     size_t line_buffer_size = 0;
-    int i = 0;
 
-    if (fread(salt_and_first_block, SIZE_OF_SALT_PREFIX + SIZE_OF_SALT + SIZE_OF_BLOCK, 1, encrypted_file) < 1) {
-            printf("Skipping file number %d because it couldn't be read", file_index);
-            file_index++;
-            continue;
+    if (!PKCS5_PBKDF2_HMAC(
+        password, password_length,
+        salt, SIZE_OF_SALT,
+        1000,
+        EVP_sha256(),
+        48,
+        derived_key_buffer
+    )) {
+        fprintf(stderr, "Error deriving key and IV\n");
     }
-    
-    while (getline(&line_buffer, &line_buffer_size, dictionary) != -1) {
-        // Remove newline character if present
-        size_t len = strlen(line_buffer);
-        if (len > 0 && line_buffer[len - 1] == '\n') {
-            line_buffer[len - 1] = '\0';
-        }
 
-        PKCS5_PBKDF2_HMAC(
-            line_buffer, strlen(line_buffer),
-            NULL, SIZE_OF_SALT,
-            1000,
-            EVP_sha256(),
-            48,
-            derived_key_buffer
-        );
-
-        // Store the derived key and IV
-        key = malloc(32 * sizeof(unsigned char));
-        iv = malloc(16 * sizeof(unsigned char));
-        memcpy(key, derived_key_buffer, 32);
-        memcpy(iv, derived_key_buffer + 32, 16);
-        
-        i++;
-    }
+    memcpy(key, derived_key_buffer, 32);
+    memcpy(iv, derived_key_buffer + 32, 16);
 }
+
 
 int decryptFile(EVP_CIPHER_CTX* ctx, FILE* encrypted_file, FILE* output_file, unsigned char* key, unsigned char* iv) {
     const char expected_header[16] = {0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a, 0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a, 0x31};
@@ -197,7 +198,6 @@ int decryptFile(EVP_CIPHER_CTX* ctx, FILE* encrypted_file, FILE* output_file, un
         EVP_CIPHER_CTX_reset(ctx);
         return DECRYPT_UPDATE_ERROR;
     }
-
 
     EVP_DecryptUpdate(ctx, decrypted_block_buffer, &decrypted_bytes, encrypted_block_buffer, bytes_read);
     if (memcmp(decrypted_block_buffer, expected_header, 16) != 0) {
@@ -230,4 +230,44 @@ int decryptFile(EVP_CIPHER_CTX* ctx, FILE* encrypted_file, FILE* output_file, un
     // Cleanup resources
     EVP_CIPHER_CTX_reset(ctx);
     return 0;
+}
+
+void getPasswords(FILE* dictionary, unsigned char *passwords[DICTIONARY_SIZE], int passwords_length[DICTIONARY_SIZE]) {
+    char* line_buffer = NULL;
+    size_t line_buffer_size = 0;
+    ssize_t password_length = 0;
+
+    int password_index = 0;
+    while ((password_length = getline(&line_buffer, &line_buffer_size, dictionary)) != -1) {
+        if (line_buffer[password_length - 1] == '\n') {
+            line_buffer[password_length - 1] = '\0';
+        }
+        passwords[password_index] = memcpy(malloc(password_length), line_buffer, password_length);
+        passwords_length[password_index] = password_length - 1; //esclude \n
+        password_index++;
+    }
+}
+
+void getSalt(FILE* encrypted_file, unsigned char salt[SIZE_OF_SALT]) {
+
+    fseek(encrypted_file, SIZE_OF_SALT_PREFIX, SEEK_SET); // Skip the "Salted__" prefix
+
+    if (fread(salt, SIZE_OF_SALT, 1, encrypted_file) < 1) {
+        printf("Error reading salt and first block from encrypted file\n");
+    } 
+    //debug
+    /*
+    for(int i = 0; i < SIZE_OF_SALT; i++) {
+        printf("%02x", salt[i]);
+    }
+    printf("\n");
+    exit(0);
+    */
+}
+
+//per debug
+void dumpPasswords(unsigned char *passwords[DICTIONARY_SIZE], int passwords_length[DICTIONARY_SIZE]) {
+    for (int i = 0; i < DICTIONARY_SIZE; i++) {
+        printf("Password %d: %.*s\n", i + 1, passwords_length[i], passwords[i]);
+    }
 }
